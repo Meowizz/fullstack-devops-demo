@@ -1,0 +1,22 @@
+- name: Start container in one network
+  hosts: localhost
+  tasks:
+    - name: Create network
+      docker_network:
+        name: app_net
+
+    - name: Start Flask App
+      docker_container:
+        name: flask-app
+        image: my-flask-app
+        networks:
+          - name: app_net
+        ports: "5000:5000"
+
+    - name: Start Nginx
+      docker_container:
+       name: nginx
+       image: my-nginx
+       networks:
+         - name: app_net
+       ports: "8080:80"
