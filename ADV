@@ -1,0 +1,111 @@
+AD-HOC
+ansible [what computers] -m [what to do] -a "[how to do it]"
+https://www.geeksforgeeks.org/ansible-ad-hoc-commands/
+
+Идемпотентность - свойство, которое декларирует один и тот же результат при повторном запуске. 
+Ansible декларативный язык, который описывает желаемое состояние сервера. 
+Работает по push модели (по желанию может работать по pull), в отличие от Chief, Puppet 
+
+-Ansible. Переменные в group_vars 
+----
+Все параметры подключения вытаскиваются в файл group_vars. 
+В директории где лежит файл hosts.txt (inventory.ini) создать директорию group_vars. Там создать файлик с названием группы серверов, к которым мы привязываем эти переменные. 
+
+ansible inventory --list - показывает список хостов и их переменных (не зависимо от того как определены эти переменные, в hosts.txt или вынесены в group_vars)
+
+Пример конфигурации перменных в 
+
+hosts.txt: 
+
+[STAGING_SERVERS_WEB:vars]
+ansible_user=ec2-user
+ansible_ssh_private_key_file=/home/ec2-user/.ssh/california-key1.pem
+
+group_vars/STAGING_SERVERS_WEB:
+---
+ansible_user:ec2-user
+ansible_ssh_private_key_file:/home/ec2-user/.ssh/california-key1.pem
+
+Обрати внимание на "---" (стандарт начала файла для YAML), и ":" вместо равно для значения переменной. 
+
+-Ansible. Первые playbook 
+----
+Напишем 3 популярных playbook`а 
+
+Первый playbook (playbook1.yml): 
+
+---
+- name: Test Connection to my servers (Имя playbook`а) 
+  hosts: all  (Группа хостов на которых он будет работать, определяется в inventory.ini) 
+  become: yes (Запуск от имени root пользователя, аналог -b в AD-HOC коммандах) 
+  
+  tasks:  (Начало перечисления Tas`ок playbook`а) 
+  - name: Ping my servers ( Название таски) 
+    ping:  (Передается название модуля, аналогично AD-HOC ansible [группа хостов] -m ping)
+	т.к. модуль ping не принимает параметров, ставим двоеточие и оставляем значение пустым
+Удобно делать, т.к. после выполнения выводит статистику успешно/не успешно.
+PLAY RECAP*****
+linux1 : ok = 2
+linux2 : ok = 2
+
+Запускаем:  ansible-playbook playbook.yml (по идее нужно указать host.txt, но если он указан в конфиге, как в данном случае, то ничего указывать не нужно) 
+
+Второй playbook (playbook2.yml): 
+---
+- name: Install default Apache Web Server 
+  hosts: all
+  become: yes
+  
+  tasks: 
+  - name: Install Apache WebServer
+    yum: name=httpd state=latest (опять же, аналогично AD-HOC команде, ansible webservers (группа хостов)  -m yum  (модуль пакетного менеджера) -a (аргументы модуля) "name=acme state=present") 
+  - name: Start Apache and Enable it on the boot 
+	service: name=httpd state=started enabled=yes (опять же аналогично ansible webservers (группа хостов)  -m service  (модуль пакетного менеджера) -a (аргументы модуля) "name=httpd state=started enabled=yes"
+
+Плейбук, который инсталирует веб сервер, запускает его и включает автоматическую загрузку после рестарта сервера. 
+  
+Третий playbook (playbook3.yml) / Копируем файл index.html из директории MyWebSite: 
+---
+- name: Install Apache and upload my Web Page
+  hosts: all
+  become: yes
+  
+  vars: (описываем переменные для этого playbook`а) 
+    source_file: ./MyWebSite/index.html  (я так понимаю, что названия могут быть произвольными в целом) 
+	destin_file: ./var/www/html
+	
+  tasks: 
+  -name: Install Apache WebServer
+   yum: name=httdp state=latests
+   
+  -name: Copy MyWebSite to Servers 
+   copy: src={{ source_file }} dest={{ destin_file }} mode=0555 (Указываются права на этот файл)((!Двойная фигурная скобка при использовании переменной!) 
+   notify: Restart Apache
+   
+  -name: Start WebServer and make it enable on boot 
+   service: name=httpd state=started enabled=yes
+	
+  handlers: (Для того чтобы ВебСервер рестартовал только когда есть изменения, по умолчанию handlers`ы не запускаются. Они запускаются только когда мы их "позовем", на проде так лучше не делать, контент создать исключенительно в ознакомительных целях, см. notify: Restart Apache в task Copy MyWebSite to Server) 
+  -name: Restart Apache
+  service: name=httpd state=restarted 
+  
+  
+Четвертый playbook(playbook4.yml):
+
+---
+-name: Install Nginx on Web Server
+ hosts: all 
+ become: yes
+ 
+ -tasks:
+  -name: Install Ningx to WebServer 
+  apt: nginx state:present
+  
+  -name: Starts Nginx 
+  service: name=nginx state=started enabled=yes
+
+(Проверить!) 
+
+-Ansible. Переменные - Debug, Set_fact, Register  
+----
+
