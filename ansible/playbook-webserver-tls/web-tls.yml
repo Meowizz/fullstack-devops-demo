@@ -1,0 +1,40 @@
+- name: Configure webserver with nginx
+  hosts: test_server
+  become: yes
+  vars:
+    key_file: /etc/nginx/ssl/nginx.key
+    cert_file: /etc/nginx/ssl/nginx.crt
+    dest_directory: /etc/nginx/ssl/
+    conf_file: /etc/nginx/sites-available/default
+    server_name: localhost
+
+  tasks:
+    
+    - name: Install Nginx
+      apt: name=nginx update_cache=yes cache_valid_time=3600 
+
+    - name: Create directory for ssl certificate
+      file: path="{{ dest_directory }}" state=directory
+    
+    - name: Copy TLS certificate 
+      copy: src=files/{{ item }} dest={{ dest_directory }}/{{ item }} mode=0555
+      loop: 
+           - "nginx.crt"
+           - "nginx.key"
+      notify: restart nginx
+    
+    - name: Copy nginx config file
+      template: src=templates/nginx.conf.j2 dest={{ conf_file }}
+      notify: restart nginx
+
+    - name: Enable configuration
+      file: dest=/etc/nginx/sites-enabled/default src={{ conf_file }} state=link
+      notify: restart nginx
+    
+    - name: Copy index.html
+      template: src=templates/index.html.j2 dest=/usr/share/nginx/html/index.htlm mode=0644
+  
+  handlers:
+    - name: restart nginx
+      service: name=nginx state=restarted
+      
