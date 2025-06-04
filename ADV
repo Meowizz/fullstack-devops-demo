@@ -108,4 +108,348 @@ linux2 : ok = 2
 
 -Ansible. Переменные - Debug, Set_fact, Register  
 ----
+ ansible all -m setup  - выводит данные о серверах, которые указаны в файле hosts.txt
+ 
+playbook.yml 
 
+---
+- name: My Super Puper Playbook for Variables Lesson
+  hosts: all
+  become: yes
+  
+  vars:
+    message1: Privet
+	message2: World
+	secret: CVXZVASDASFASDAS
+	
+  tasks:
+  - name: Print Secret Variable
+    debug:
+	  var: secret
+  - debug:
+      msg: "Secret word: {{ secret }}"
+	  
+  - debug:
+      msg: "Owner this server: -->{{ owner (определена в фале hosts.txt)}}<--"
+	  
+  - set_fact: full_message="{{ message1 }} {{ message2 }} from {{ owner }}"
+  - debug: 
+      var: full_message
+  - debug: 
+      var: ansible_distribution
+  - shell: uptime
+    register: results
+	
+  - debug: 
+      var: results.stdout (одна строчка из всего uptime, который выводится в JSON формате) 
+  
+ --
+
+ 
+ Ansible. Блоки и Условия - Block-When
+ ----
+ - name: Install Apache and upload my Web Page
+  hosts: all
+  become: yes
+  
+  vars: (описываем переменные для этого playbook`а) 
+    source_file: ./MyWebSite/index.html  (я так понимаю, что названия могут быть произвольными в целом) 
+	destin_file: ./var/www/html
+	
+  tasks: 
+  - name: Check and print LINUX Version
+    debug: var=ansible_os_family
+  
+  - name: Install Apache for Debian 
+    apt: name=apache2 state= latest
+    when: ansible_os_family == "Debian"
+	
+  - name: Install Apache WebServer
+    yum: name=httdp state=latests
+  	when: ansible_os_family != "Debian"
+   
+  - name: Copy MyWebSite to Servers 
+    copy: src={{ source_file }} dest={{ destin_file }} mode=0555 (Указываются права на этот файл)((!Двойная фигурная скобка при использовании переменной!) 
+#   notify: Restart Apache RedHat
+   
+  - name: Start WebServer and make it enable on boot 
+    service: 
+	  name=httpd 
+	  state=started 
+	  enabled=yes
+	when: ansible_os_family == "RedHat"
+  - name: Statr
+    service: 
+	  name=apache2 
+	  state=started 
+	  enabled=yes
+	when: ansible_os_family == "Debian"
+	
+  handlers: (Для того чтобы ВебСервер рестартовал только когда есть изменения, по умолчанию handlers`ы не запускаются. Они запускаются только когда мы их "позовем", на проде так лучше не делать, контент создать исключенительно в ознакомительных целях, см. notify: Restart Apache в task Copy MyWebSite to Server) 
+  -name: Restart Apache RedHat
+  service: name=httpd state=restarted 
+  -name: Restart Apache Debian
+  service: name=apache2 state=restarted
+  
+  
+  
+  Тот же playbook с блоками
+  
+   - name: Install Apache and upload my Web Page
+  hosts: all
+  become: yes
+  
+  vars: (описываем переменные для этого playbook`а) 
+    source_file: ./MyWebSite/index.html  (я так понимаю, что названия могут быть произвольными в целом) 
+	destin_file: ./var/www/html
+	
+  tasks: 
+  - name: Check and print LINUX Version
+    debug: var=ansible_os_family
+	
+  - block: #====Block for Debian====
+  
+    - name: Install Apache for Debian 
+      apt: name=apache2 state= latest
+	  
+     - name: Start WebServer and make it enable on boot 
+       service: 
+	     name=apache2
+	     state=started 
+	     enabled=yes
+    
+	- name: Copy MyWebSite to Servers 
+      copy: src={{ source_file }} dest={{ destin_file }} mode=0555 (Указываются права на этот файл)((!Двойная фигурная скобка при использовании переменной!) 
+      notify: Restart Apache Debian
+    when: ansible_os_family == "Ubuntu"
+	
+  - block: #====Block for REDHAT===	
+    
+	- name: Install Apache WebServer  
+       yum: name=httdp state=latests
+	  
+     - name: Start WebServer and make it enable on boot 
+       service: 
+	     name=httpd 
+	     state=started 
+	     enabled=yes
+		 
+	- name: Copy MyWebSite to Servers 
+      copy: src={{ source_file }} dest={{ destin_file }} mode=0555 (Указываются права на этот файл)((!Двойная фигурная скобка при использовании переменной!) 
+      notify: Restart Apache RedHat
+	  
+	when: ansible_os_family == "Debian"
+	
+  handlers: (Для того чтобы ВебСервер рестартовал только когда есть изменения, по умолчанию handlers`ы не запускаются. Они запускаются только когда мы их "позовем", на проде так лучше не делать, контент создать исключенительно в ознакомительных целях, см. notify: Restart Apache в task Copy MyWebSite to Server) 
+  -name: Restart Apache RedHat
+  service: name=httpd state=restarted 
+  -name: Restart Apache Debian
+  service: name=apache2 state=restarted
+  
+
+ -Ansible. Циклы - Loop, With_Items. Until. With_fileglob
+ ----
+ Пример простого playbook для работы с цифрами. 
+ 
+ playbookloop.yaml
+ ---
+ - name: Loop Playbook 
+   hosts: linux3
+   become: yes 
+   
+   tasks:
+   - name: Say Hello to All 
+     debug: msg: "Hello, {{ item }}"
+	 loop: (Ansible 2.5)
+	 	 - "Vasya"
+		 - "Petya"
+		 - "Masha"
+		 - "Olya"
+	 with_items: 
+	     - "Vasya"
+		 - "Petya"
+		 - "Masha"
+		 - "Olya"
+   - name: Loop Until example 
+     shell: echo -n Z >> myfile.txt & cat myfile.txt
+	 register: output
+	 delay: 2
+	 retries: 10 (default 3, если не указывать) 
+	 until: output.stdout.find("ZZZZ") == false
+	 
+   - name: Print Final Output 
+     debug: 
+	   var: output.stdout
+	   
+   - name: Install Many Packeges 
+     yum: name={{ item }} state=installed
+	 loop: 
+	     - python
+	     - mysql-client
+	     - tree
+________________________________________________________________
+---
+   - name: Install Apache and upload my Web Page
+  hosts: all
+  become: yes
+  
+  vars: (описываем переменные для этого playbook`а) 
+    source_fodler: ./MyWebSite2  
+	destin_folder: ./var/www/html
+	
+  tasks: 
+  - name: Check and print LINUX Version
+    debug: var=ansible_os_family
+	
+  - block: #====Block for Debian====
+  
+    - name: Install Apache for Debian 
+      apt: name=apache2 state= latest
+	  
+     - name: Start WebServer and make it enable on boot 
+       service: 
+	     name=apache2
+	     state=started 
+	     enabled=yes
+    
+    when: ansible_os_family == "Ubuntu"
+	
+  - block: #====Block for REDHAT===	
+    
+	- name: Install Apache WebServer  
+       yum: name=httdp state=latests
+	  
+     - name: Start WebServer and make it enable on boot 
+       service: 
+	     name=httpd 
+	     state=started 
+	     enabled=yes
+	  
+	when: ansible_os_family == "REDHAT"
+	
+
+	- name: Copy MyWebSite to Servers 
+      copy: src={{ source_fodler }}/{{ item }} dest={{ destin_folder }} mode=0555 (Указываются права на этот файл)((!Двойная фигурная скобка при использовании переменной!) 
+      loop:
+	      - "index.html"
+	      - "bahamas.png"
+	      - "bulgaria.png"
+	      - "jordan.png"
+	      - "newzeland.png"
+	  notify: 
+	     - Restart Apache Debian
+		 - Restart Apache RedHat
+		
+# Копирование файлов с помощью паттернов  
+   - name: Copy File win Patters
+     copy: src={{ item }} dest= {{ destin_folder }}   mode=0555
+	 with_fileglob: "{{ source_fodler }}/*.*"
+	  notify: 
+	     - Restart Apache Debian
+		 - Restart Apache RedHat
+  handlers: (Для того чтобы ВебСервер рестартовал только когда есть изменения, по умолчанию handlers`ы не запускаются. Они запускаются только когда мы их "позовем", на проде так лучше не делать, контент создать исключенительно в ознакомительных целях, см. notify: Restart Apache в task Copy MyWebSite to Server) 
+  -name: Restart Apache RedHat
+  when: ansible_os_family == "REDHAT"
+  service: name=httpd state=restarted 
+  -name: Restart Apache Debian
+  service: name=apache2 state=restarted
+  when: ansible_os_family == "Ubuntu"
+  
+ - Ansbile. Шаблоны - Jinja Template 	
+ ---
+ Шаблоны Jinja2 — это текстовые файлы, которые содержат переменные, меняющиеся со временем. Во время выполнения кода эти переменные заменяются фактическими значениями
+ Некоторые теги, которые встречаются в шаблонах Jinja2:
+{{ }}. Используются для встраивания переменных и вывода их значений во время выполнения кода.
+{% %}. Чаще всего применяются для управляющих операторов, таких как циклы и операторы if-else.
+{# #}. Обозначают комментарии, описывающие задачу.
+ 
+    - name: Install Apache and upload my Web Page
+  hosts: all
+  become: yes
+  
+  vars: (описываем переменные для этого playbook`а) 
+    source_fodler: ./MyWebSite2  
+	destin_folder: ./var/www/html
+	
+  tasks: 
+  - name: Check and print LINUX Version
+    debug: var=ansible_os_family
+	
+  - block: #====Block for Debian====
+  
+    - name: Install Apache for Debian 
+      apt: name=apache2 state= latest
+	  
+     - name: Start WebServer and make it enable on boot 
+       service: 
+	     name=apache2
+	     state=started 
+	     enabled=yes
+    
+    when: ansible_os_family == "Ubuntu"
+	
+  - block: #====Block for REDHAT===	
+    
+	- name: Install Apache WebServer  
+       yum: name=httdp state=latests
+	  
+     - name: Start WebServer and make it enable on boot 
+       service: 
+	     name=httpd 
+	     state=started 
+	     enabled=yes
+	  
+	when: ansible_os_family == "REDHAT"
+	
+    - name: Generate INDEX.HTML file 
+	  template: src={{ source_folder }}/index.j2 dest={{ destin_folder }}/index.html  (template проверяет есть ли в нем наличие переменных, а copy не проверяет, в остальном модули одинаковые)
+	  notify: 
+	     - Restart Apache Debian
+		 - Restart Apache RedHat
+		
+	- name: Copy MyWebSite to Servers 
+      copy: src={{ source_fodler }}/{{ item }} dest={{ destin_folder }} mode=0555 (Указываются права на этот файл)((!Двойная фигурная скобка при использовании переменной!) 
+      loop:
+	      - "bahamas.png"
+	      - "bulgaria.png"
+	      - "jordan.png"
+	      - "newzeland.png"
+	  notify: 
+	     - Restart Apache Debian
+		 - Restart Apache RedHat
+		
+# Копирование файлов с помощью паттернов  
+   - name: Copy File win Patters
+     copy: src={{ item }} dest= {{ destin_folder }}   mode=0555
+	 with_fileglob: "{{ source_fodler }}/*.*"
+	  notify: 
+	     - Restart Apache Debian
+		 - Restart Apache RedHat
+  handlers: (Для того чтобы ВебСервер рестартовал только когда есть изменения, по умолчанию handlers`ы не запускаются. Они запускаются только когда мы их "позовем", на проде так лучше не делать, контент создать исключенительно в ознакомительных целях, см. notify: Restart Apache в task Copy MyWebSite to Server) 
+  -name: Restart Apache RedHat
+  when: ansible_os_family == "REDHAT"
+  service: name=httpd state=restarted 
+  -name: Restart Apache Debian
+  service: name=apache2 state=restarted
+  when: ansible_os_family == "Ubuntu"
+  
+ - Ansbile. Создание ролей - Roles
+ ---
+ mkdir roles
+ 
+ В каталоге roles -> ansible-galaxy init [название роли]
+ 
+ ansible-galaxy init deploy_apache_web
+ Создала директорию с кучей-кучей файликов
+ 
+ Раскидать плейбук по директориям, в основном файле останется: 
+ 
+ ---
+ - name: Install Apache and Upload my Home Page 
+   hosts: all
+   become: yes
+   
+   roles: 
+     - { role: deploy_apache_web, when: ansible_system == 'Linux'} 
+	 
+И дальше запускать как плейбук обычный (см. выше)
